@@ -1,6 +1,6 @@
-import { useParams, useLocation, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Navbar, Nav } from 'react-bootstrap';
 import "../style/ProductPage.css";
 import backImage from "../assets/image/home-bg.jpeg";
@@ -16,9 +16,9 @@ const categoryFilters = {
 
 const ProductPage = () => {
   const { id } = useParams();
-  const location = useLocation();
-  const category = new URLSearchParams(location.search).get('category');
-
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const category = searchParams.get('category');
   const [product, setProduct] = useState(null);
   const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
@@ -26,12 +26,40 @@ const ProductPage = () => {
   const [selectedFilters, setSelectedFilters] = useState({});
 
   useEffect(() => {
-    if (id) fetchProduct(id);
-    else if (category) fetchProductsByCategory(category);
-    else fetchAllProducts();
-  }, [id, category]);
+    setLoading(true);
+    axios.get('http://localhost:5000/api/products', { params: { limit: 10 } })
+      .then(({ data }) => setProducts(data))
+      .catch(() => setError("Failed to fetch initial products."))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const fetchProduct = async (productId) => {
+  const fetchProductsByCategory = useCallback(async (categoryName, filters) => {
+    setLoading(true);
+    try {
+      const filtersString = filters.length ? `&filters=${encodeURIComponent(filters.join(','))}` : '';
+      const { data } = await axios.get(`http://localhost:5000/api/products?category=${encodeURIComponent(categoryName)}${filtersString}`);
+      setProducts(data);
+    } catch (error) {
+      setError("Failed to fetch products.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (category) {
+      const selectedFiltersArray = Object.keys(selectedFilters).filter((key) => selectedFilters[key]);
+      fetchProductsByCategory(category, selectedFiltersArray);
+    }
+  }, [category, selectedFilters, fetchProductsByCategory]);
+
+  useEffect(() => {
+    if (id) {
+      fetchProductDetails(id);
+    }
+  }, [id]);
+
+  const fetchProductDetails = async (productId) => {
     try {
       const { data } = await axios.get(`http://localhost:5000/api/products/${productId}`);
       setProduct(data);
@@ -40,35 +68,12 @@ const ProductPage = () => {
     }
   };
 
-  const fetchProductsByCategory = async (categoryName) => {
-    setLoading(true);
-    try {
-      const { data } = await axios.get(`http://localhost:5000/api/products?category=${encodeURIComponent(categoryName)}`);
-      setProducts(data);
-    } catch (error) {
-      setError("Failed to fetch products.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAllProducts = async () => {
-    setLoading(true);
-    try {
-      const { data } = await axios.get("http://localhost:5000/api/products");
-      setProducts(data);
-    } catch (error) {
-      setError("Failed to fetch all products.");
-    } finally {
-      setLoading(false);
-    }
+  const handleCategoryClick = (categoryName) => {
+    navigate(`?category=${encodeURIComponent(categoryName)}`);
   };
 
   const handleFilterChange = (filter) => {
-    setSelectedFilters((prev) => {
-      const updatedFilters = { ...prev, [filter]: !prev[filter] };
-      return updatedFilters;
-    });
+    setSelectedFilters((prev) => ({ ...prev, [filter]: !prev[filter] }));
   };
 
   return (
@@ -80,7 +85,7 @@ const ProductPage = () => {
           <Navbar.Collapse id="category-navbar">
             <Nav className="d-flex flex-nowrap">
               {Object.keys(categoryFilters).map((cat) => (
-                <Nav.Link key={cat} as={Link} to={`/products?category=${cat}`} className="text-dark px-3 py-2">
+                <Nav.Link key={cat} onClick={() => handleCategoryClick(cat)} className="text-dark px-3 py-2">
                   {cat}
                 </Nav.Link>
               ))}
@@ -141,4 +146,3 @@ const ProductPage = () => {
 };
 
 export default ProductPage;
-
